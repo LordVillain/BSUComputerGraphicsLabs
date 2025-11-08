@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Color Converter — CMYK / RGB / HSV</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Color Converter — CMYK · RGB · HSV</h1>
+
+    <section class="top-row">
+      <div class="swatch-and-picker">
+        <div id="swatch" class="swatch" title="Текущий цвет"></div>
+        <label class="picker-label">
+          Цвет (hex):
+          <input id="colorPicker" type="color" />
+        </label>
+        <div id="hexValue" class="hex-value">#000000</div>
+      </div>
+
+      <div class="instructions">
+        <p>Изменяйте значения в любой модели (числовые поля, ползунки или цветовой пикер). Все представления будут пересчитаны автоматически.</p>
+      </div>
+    </section>
+
+    <section class="models-grid">
+      <!-- RGB -->
+      <div class="model-card" id="rgbCard">
+        <h2>RGB</h2>
+
+        <div class="row">
+          <label>R
+            <input id="rgb_r_num" type="number" min="0" max="255" step="1" />
+          </label>
+          <input id="rgb_r_range" type="range" min="0" max="255" step="1" />
+        </div>
+
+        <div class="row">
+          <label>G
+            <input id="rgb_g_num" type="number" min="0" max="255" step="1" />
+          </label>
+          <input id="rgb_g_range" type="range" min="0" max="255" step="1" />
+        </div>
+
+        <div class="row">
+          <label>B
+            <input id="rgb_b_num" type="number" min="0" max="255" step="1" />
+          </label>
+          <input id="rgb_b_range" type="range" min="0" max="255" step="1" />
+        </div>
+      </div>
+
+      <!-- CMYK -->
+      <div class="model-card" id="cmykCard">
+        <h2>CMYK (проценты)</h2>
+
+        <div class="row">
+          <label>C
+            <input id="cmyk_c_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="cmyk_c_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+
+        <div class="row">
+          <label>M
+            <input id="cmyk_m_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="cmyk_m_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+
+        <div class="row">
+          <label>Y
+            <input id="cmyk_y_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="cmyk_y_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+
+        <div class="row">
+          <label>K
+            <input id="cmyk_k_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="cmyk_k_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+      </div>
+
+      <!-- HSV -->
+      <div class="model-card" id="hsvCard">
+        <h2>HSV</h2>
+
+        <div class="row">
+          <label>H (0–360)
+            <input id="hsv_h_num" type="number" min="0" max="360" step="0.1" />
+          </label>
+          <input id="hsv_h_range" type="range" min="0" max="360" step="0.1" />
+        </div>
+
+        <div class="row">
+          <label>S (%)
+            <input id="hsv_s_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="hsv_s_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+
+        <div class="row">
+          <label>V (%)
+            <input id="hsv_v_num" type="number" min="0" max="100" step="0.1" />
+          </label>
+          <input id="hsv_v_range" type="range" min="0" max="100" step="0.1" />
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <small>Backend API: <code>/api/convert</code> (POST JSON). Формат: <code>{"model":"rgb"|"cmyk"|"hsv","values":{...}}</code></small>
+    </footer>
+  </main>
+
+  <script>
+    // --- Утилиты ---
+    const $ = id => document.getElementById(id);
+
+    function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
+    function roundTo(n, p=2) { const f = Math.pow(10, p); return Math.round(n * f) / f; }
+
+    function rgbToHex(r,g,b){
+      const toHex = v => ('0' + v.toString(16)).slice(-2);
+      return '#' + toHex(r) + toHex(g) + toHex(b);
+    }
+    function hexToRgb(hex){
+      if(!hex) return {r:0,g:0,b:0};
+      const h = hex.replace('#','');
+      if(h.length === 3){
+        return {
+          r: parseInt(h[0]+h[0],16),
+          g: parseInt(h[1]+h[1],16),
+          b: parseInt(h[2]+h[2],16)
+        };
+      }
+      return {
+        r: parseInt(h.slice(0,2),16),
+        g: parseInt(h.slice(2,4),16),
+        b: parseInt(h.slice(4,6),16)
+      };
+    }
+
+    // --- элементы ---
+    const swatch = $('swatch');
+    const colorPicker = $('colorPicker');
+    const hexValue = $('hexValue');
+
+    // RGB elements
+    const rgb_r_num = $('rgb_r_num'), rgb_g_num = $('rgb_g_num'), rgb_b_num = $('rgb_b_num');
+    const rgb_r_range = $('rgb_r_range'), rgb_g_range = $('rgb_g_range'), rgb_b_range = $('rgb_b_range');
+
+    // CMYK elements
+    const cmyk_c_num = $('cmyk_c_num'), cmyk_m_num = $('cmyk_m_num'), cmyk_y_num = $('cmyk_y_num'), cmyk_k_num = $('cmyk_k_num');
+    const cmyk_c_range = $('cmyk_c_range'), cmyk_m_range = $('cmyk_m_range'), cmyk_y_range = $('cmyk_y_range'), cmyk_k_range = $('cmyk_k_range');
+
+    // HSV elements
+    const hsv_h_num = $('hsv_h_num'), hsv_s_num = $('hsv_s_num'), hsv_v_num = $('hsv_v_num');
+    const hsv_h_range = $('hsv_h_range'), hsv_s_range = $('hsv_s_range'), hsv_v_range = $('hsv_v_range');
+
+    // флаг, чтобы не зациклиться при программных обновлениях
+    let isUpdating = false;
+
+    // --- Отправка запроса на сервер ---
+    async function sendConvert(model, values) {
+      try {
+        const res = await fetch('/api/convert', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({model, values})
+        });
+        if(!res.ok) {
+          console.error('API error', await res.text());
+          return null;
+        }
+        return await res.json();
+      } catch (e) {
+        console.error('Fetch error', e);
+        return null;
+      }
+    }
+
+    // --- Обновление UI из ответа ---
+    function applyResponse(resp) {
+      if(!resp) return;
+      isUpdating = true;
+      try {
+        // RGB
+        const r = resp.rgb.r|0, g = resp.rgb.g|0, b = resp.rgb.b|0;
+        rgb_r_num.value = r; rgb_g_num.value = g; rgb_b_num.value = b;
+        rgb_r_range.value = r; rgb_g_range.value = g; rgb_b_range.value = b;
+
+        // CMYK (ответ в процентах)
+        cmyk_c_num.value = resp.cmyk.c; cmyk_m_num.value = resp.cmyk.m; cmyk_y_num.value = resp.cmyk.y; cmyk_k_num.value = resp.cmyk.k;
+        cmyk_c_range.value = resp.cmyk.c; cmyk_m_range.value = resp.cmyk.m; cmyk_y_range.value = resp.cmyk.y; cmyk_k_range.value = resp.cmyk.k;
+
+        // HSV (H in degrees, S/V in percent)
+        hsv_h_num.value = resp.hsv.h; hsv_s_num.value = resp.hsv.s; hsv_v_num.value = resp.hsv.v;
+        hsv_h_range.value = resp.hsv.h; hsv_s_range.value = resp.hsv.s; hsv_v_range.value = resp.hsv.v;
+
+        // color picker + swatch + hex
+        const hex = rgbToHex(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255));
+        colorPicker.value = hex;
+        swatch.style.background = hex;
+        hexValue.textContent = hex;
+      } finally {
+        // небольшой таймаут перед снятием флага, чтобы избежать гонок
+        setTimeout(()=> isUpdating = false, 0);
+      }
+    }
+
+    // --- Сбор значений и вызов API в ответ на изменения ---
+    async function onRGBChange() {
+      if (isUpdating) return;
+      const r = clamp(parseInt(rgb_r_num.value||0),0,255);
+      const g = clamp(parseInt(rgb_g_num.value||0),0,255);
+      const b = clamp(parseInt(rgb_b_num.value||0),0,255);
+
+      // синхронизируем ползунки
+      rgb_r_range.value = r; rgb_g_range.value = g; rgb_b_range.value = b;
+      // сразу локально обновим swatch/hex, но окончательно UI обновит ответ сервера
+      const hex = rgbToHex(r,g,b);
+      swatch.style.background = hex; colorPicker.value = hex; hexValue.textContent = hex;
+
+      const resp = await sendConvert('rgb', {r, g, b});
+      applyResponse(resp);
+    }
+
+    async function onCMYKChange() {
+      if (isUpdating) return;
+      const c = clamp(parseFloat(cmyk_c_num.value||0),0,100);
+      const m = clamp(parseFloat(cmyk_m_num.value||0),0,100);
+      const y = clamp(parseFloat(cmyk_y_num.value||0),0,100);
+      const k = clamp(parseFloat(cmyk_k_num.value||0),0,100);
+
+      cmyk_c_range.value = c; cmyk_m_range.value = m; cmyk_y_range.value = y; cmyk_k_range.value = k;
+
+      const resp = await sendConvert('cmyk', {c, m, y, k});
+      applyResponse(resp);
+    }
+
+    async function onHSVChange() {
+      if (isUpdating) return;
+      const h = clamp(parseFloat(hsv_h_num.value||0),0,360);
+      const s = clamp(parseFloat(hsv_s_num.value||0),0,100);
+      const v = clamp(parseFloat(hsv_v_num.value||0),0,100);
+
+      hsv_h_range.value = h; hsv_s_range.value = s; hsv_v_range.value = v;
+
+      const resp = await sendConvert('hsv', {h, s, v});
+      applyResponse(resp);
+    }
+
+    async function onColorPickerChange() {
+      if (isUpdating) return;
+      const hex = colorPicker.value;
+      const {r,g,b} = hexToRgb(hex);
+      // синхронизируем RGB поля локально, потом отправим через onRGBChange
+      rgb_r_num.value = r; rgb_g_num.value = g; rgb_b_num.value = b;
+      rgb_r_range.value = r; rgb_g_range.value = g; rgb_b_range.value = b;
+      swatch.style.background = hex; hexValue.textContent = hex;
+
+      const resp = await sendConvert('rgb', {r,g,b});
+      applyResponse(resp);
+    }
+
+    // --- Привязка событий ---
+    function bindNumberRange(numEl, rangeEl, handler) {
+      numEl.addEventListener('input', handler);
+      rangeEl.addEventListener('input', () => {
+        numEl.value = rangeEl.value;
+        handler();
+      });
+    }
+
+    // RGB
+    bindNumberRange(rgb_r_num, rgb_r_range, onRGBChange);
+    bindNumberRange(rgb_g_num, rgb_g_range, onRGBChange);
+    bindNumberRange(rgb_b_num, rgb_b_range, onRGBChange);
+
+    // CMYK
+    bindNumberRange(cmyk_c_num, cmyk_c_range, onCMYKChange);
+    bindNumberRange(cmyk_m_num, cmyk_m_range, onCMYKChange);
+    bindNumberRange(cmyk_y_num, cmyk_y_range, onCMYKChange);
+    bindNumberRange(cmyk_k_num, cmyk_k_range, onCMYKChange);
+
+    // HSV
+    bindNumberRange(hsv_h_num, hsv_h_range, onHSVChange);
+    bindNumberRange(hsv_s_num, hsv_s_range, onHSVChange);
+    bindNumberRange(hsv_v_num, hsv_v_range, onHSVChange);
+
+    colorPicker.addEventListener('input', onColorPickerChange);
+
+    // --- Инициализация: установим черный как стартовый ---
+    (async function init(){
+      // стартовое значение (чёрный)
+      const resp = await sendConvert('rgb', {r:0,g:0,b:0});
+      applyResponse(resp);
+    })();
+
+  </script>
+</body>
+</html>
