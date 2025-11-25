@@ -189,30 +189,51 @@
       if(!resp) return;
       isUpdating = true;
       try {
+        // Вспомогательная функция: обновляет поле только если оно НЕ в фокусе
+        const safeUpdate = (el, val) => {
+          if (document.activeElement !== el) {
+            el.value = val;
+          }
+        };
+
         // RGB
         const r = resp.rgb.r|0, g = resp.rgb.g|0, b = resp.rgb.b|0;
-        rgb_r_num.value = r; rgb_g_num.value = g; rgb_b_num.value = b;
+        
+        safeUpdate(rgb_r_num, r); 
+        safeUpdate(rgb_g_num, g); 
+        safeUpdate(rgb_b_num, b);
+        
         rgb_r_range.value = r; rgb_g_range.value = g; rgb_b_range.value = b;
 
-        // CMYK (ответ в процентах)
-        cmyk_c_num.value = resp.cmyk.c; cmyk_m_num.value = resp.cmyk.m; cmyk_y_num.value = resp.cmyk.y; cmyk_k_num.value = resp.cmyk.k;
+        // CMYK
+        safeUpdate(cmyk_c_num, resp.cmyk.c);
+        safeUpdate(cmyk_m_num, resp.cmyk.m);
+        safeUpdate(cmyk_y_num, resp.cmyk.y);
+        safeUpdate(cmyk_k_num, resp.cmyk.k);
+
         cmyk_c_range.value = resp.cmyk.c; cmyk_m_range.value = resp.cmyk.m; cmyk_y_range.value = resp.cmyk.y; cmyk_k_range.value = resp.cmyk.k;
 
-        // HSV (H in degrees, S/V in percent)
-        hsv_h_num.value = resp.hsv.h; hsv_s_num.value = resp.hsv.s; hsv_v_num.value = resp.hsv.v;
+        // HSV
+        safeUpdate(hsv_h_num, resp.hsv.h);
+        safeUpdate(hsv_s_num, resp.hsv.s);
+        safeUpdate(hsv_v_num, resp.hsv.v);
+
         hsv_h_range.value = resp.hsv.h; hsv_s_range.value = resp.hsv.s; hsv_v_range.value = resp.hsv.v;
 
         // color picker + swatch + hex
         const hex = rgbToHex(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255));
-        colorPicker.value = hex;
+        
+        // Color picker тоже не стоит обновлять, если он открыт (хотя отследить сложнее, но для input type='text' проверка activeElement обязательна)
+        if (document.activeElement !== colorPicker) {
+             colorPicker.value = hex;
+        }
+        
         swatch.style.background = hex;
         hexValue.textContent = hex;
       } finally {
-        // небольшой таймаут перед снятием флага, чтобы избежать гонок
         setTimeout(()=> isUpdating = false, 0);
       }
     }
-
     // --- Сбор значений и вызов API в ответ на изменения ---
     async function onRGBChange() {
       if (isUpdating) return;
