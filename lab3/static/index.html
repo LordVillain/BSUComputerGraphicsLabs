@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Lab 3: Raster Algorithms</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; }
+        .container { display: flex; gap: 20px; margin-top: 20px; }
+        .controls { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 300px; }
+        canvas { background: white; border: 1px solid #ccc; cursor: crosshair; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .row { margin-bottom: 10px; }
+        label { display: inline-block; width: 30px; }
+        input[type="number"] { width: 60px; }
+        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        button:hover { background: #0056b3; }
+        .stats { margin-top: 20px; padding: 10px; background: #eef; border-radius: 4px; font-size: 0.9em; }
+        h2 { margin: 0 0 10px 0; font-size: 1.2em; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<h1>Лаб 3: Базовые растровые алгоритмы</h1>
+
+<div class="container">
+    <div class="controls">
+        <h2>Настройки</h2>
+        
+        <div class="row">
+            <select id="algoSelect" style="width: 100%; padding: 5px;">
+                <option value="step">Пошаговый алгоритм</option>
+                <option value="dda">Алгоритм ЦДА (DDA)</option>
+                <option value="bresenham_line">Брезенхем (Линия)</option>
+                <option value="bresenham_circle">Брезенхем (Окружность)</option>
+            </select>
+        </div>
+
+        <div id="lineInputs">
+            <h3>Координаты отрезка</h3>
+            <div class="row">
+                <label>X1:</label> <input type="number" id="x1" value="-5">
+                <label>Y1:</label> <input type="number" id="y1" value="-5">
+            </div>
+            <div class="row">
+                <label>X2:</label> <input type="number" id="x2" value="10">
+                <label>Y2:</label> <input type="number" id="y2" value="8">
+            </div>
+        </div>
+
+        <div id="circleInputs" class="hidden">
+            <h3>Координаты окружности</h3>
+            <div class="row">
+                <label>X:</label> <input type="number" id="cx" value="0">
+                <label>Y:</label> <input type="number" id="cy" value="0">
+            </div>
+            <div class="row">
+                <label>R:</label> <input type="number" id="r" value="10" min="1">
+            </div>
+        </div>
+
+        <div class="row" style="margin-top: 20px;">
+            <label style="width: 100px;">Масштаб:</label>
+            <input type="range" id="scaleRange" min="5" max="50" value="20">
+        </div>
+
+        <button onclick="draw()">Построить</button>
+        <button onclick="clearCanvas()" style="background: #dc3545; margin-top: 5px;">Очистить</button>
+
+        <div class="stats" id="statsOutput">
+            Время выполнения: -
+        </div>
+        
+        <p style="font-size: 0.8em; color: #666;">
+            * Центр координат (0,0) находится в центре холста.
+        </p>
+    </div>
+
+    <canvas id="canvas" width="600" height="600"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const algoSelect = document.getElementById('algoSelect');
+    
+    // Параметры сетки
+    let scale = 20; // пикселей на одну логическую единицу
+    let centerX = canvas.width / 2;
+    let centerY = canvas.height / 2;
+
+    // Переключение полей ввода
+    algoSelect.addEventListener('change', () => {
+        const val = algoSelect.value;
+        if (val === 'bresenham_circle') {
+            document.getElementById('lineInputs').classList.add('hidden');
+            document.getElementById('circleInputs').classList.remove('hidden');
+        } else {
+            document.getElementById('lineInputs').classList.remove('hidden');
+            document.getElementById('circleInputs').classList.add('hidden');
+        }
+    });
+
+    document.getElementById('scaleRange').addEventListener('input', (e) => {
+        scale = parseInt(e.target.value);
+        drawGrid(); // Перерисовать только сетку, без данных
+        // Можно вызывать draw(), если хотим сохранять рисунок при зуме
+    });
+
+    function drawGrid() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Линии сетки
+        ctx.beginPath();
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 1;
+
+        // Вертикальные
+        for (let x = centerX; x < canvas.width; x += scale) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+        for (let x = centerX; x > 0; x -= scale) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+        
+        // Горизонтальные
+        for (let y = centerY; y < canvas.height; y += scale) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+        for (let y = centerY; y > 0; y -= scale) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+        ctx.stroke();
+
+        // Оси
+        ctx.beginPath();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); // X
+        ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvas.height); // Y
+        ctx.stroke();
+
+        // Подписи осей
+        ctx.fillStyle = 'black';
+        ctx.font = '12px Arial';
+        ctx.fillText("X", canvas.width - 15, centerY - 5);
+        ctx.fillText("Y", centerX + 5, 15);
+    }
+
+    function drawPixel(logicalX, logicalY, color = '#007bff') {
+        // Преобразование: Логические координаты -> Экранные
+        // X растет вправо, Y растет ВВЕРХ (в математике), но на канвасе Y растет ВНИЗ.
+        // Поэтому screenY = centerY - logicalY * scale
+        
+        const screenX = centerX + logicalX * scale;
+        const screenY = centerY - logicalY * scale;
+
+        ctx.fillStyle = color;
+        // Рисуем квадрат чуть меньше клетки сетки, чтобы сетку было видно
+        ctx.fillRect(screenX + 1, screenY - scale + 1, scale - 2, scale - 2);
+    }
+
+    async function draw() {
+        drawGrid();
+        
+        const algo = algoSelect.value;
+        const req = { algorithm: algo };
+
+        if (algo === 'bresenham_circle') {
+            req.x1 = parseInt(document.getElementById('cx').value);
+            req.y1 = parseInt(document.getElementById('cy').value);
+            req.r = parseInt(document.getElementById('r').value);
+        } else {
+            req.x1 = parseInt(document.getElementById('x1').value);
+            req.y1 = parseInt(document.getElementById('y1').value);
+            req.x2 = parseInt(document.getElementById('x2').value);
+            req.y2 = parseInt(document.getElementById('y2').value);
+        }
+
+        try {
+            const res = await fetch('/api/draw', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(req)
+            });
+            const data = await res.json();
+
+            if (data.points) {
+                data.points.forEach(p => drawPixel(p.x, p.y));
+            }
+            
+            document.getElementById('statsOutput').textContent = 
+                `Время выполнения (Go): ${data.time_ns} нс`;
+
+        } catch (e) {
+            alert('Ошибка: ' + e);
+        }
+    }
+
+    function clearCanvas() {
+        drawGrid();
+        document.getElementById('statsOutput').textContent = "Время выполнения: -";
+    }
+
+    // Инициализация
+    drawGrid();
+
+</script>
+</body>
+</html>
