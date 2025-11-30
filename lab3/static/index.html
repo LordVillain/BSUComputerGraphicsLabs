@@ -27,11 +27,12 @@
         <h2>Настройки</h2>
         
         <div class="row">
-            <select id="algoSelect" style="width: 100%; padding: 5px;">
-                <option value="step">Пошаговый алгоритм</option>
-                <option value="dda">Алгоритм ЦДА (DDA)</option>
-                <option value="bresenham_line">Брезенхем (Линия)</option>
-                <option value="bresenham_circle">Брезенхем (Окружность)</option>
+           <select id="algoSelect" style="width: 100%; padding: 5px;">
+            <option value="step">Пошаговый алгоритм</option>
+            <option value="dda">Алгоритм ЦДА (DDA)</option>
+            <option value="bresenham_line">Брезенхем (Линия)</option>
+            <option value="bresenham_circle">Брезенхем (Окружность)</option>
+            <option value="casteljau">Де Кастельжо (Кривая Безье)</option> <!-- Добавили -->
             </select>
         </div>
 
@@ -58,6 +59,18 @@
             </div>
         </div>
 
+        <div id="bezierInputs" class="hidden">
+            <h3>Доп. точки Безье</h3>
+            <div class="row">
+                <label>X3:</label> <input type="number" id="x3" value="5">
+                <label>Y3:</label> <input type="number" id="y3" value="-10">
+            </div>
+            <div class="row">
+                <label>X4:</label> <input type="number" id="x4" value="10">
+                <label>Y4:</label> <input type="number" id="y4" value="0">
+            </div>
+        </div>
+
         <div class="row" style="margin-top: 20px;">
             <label style="width: 100px;">Масштаб:</label>
             <input type="range" id="scaleRange" min="5" max="50" value="20">
@@ -81,57 +94,71 @@
 <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    
+    // Получаем ссылки на все группы инпутов
     const algoSelect = document.getElementById('algoSelect');
+    const lineInputs = document.getElementById('lineInputs');
+    const circleInputs = document.getElementById('circleInputs');
+    const bezierInputs = document.getElementById('bezierInputs'); // Эту переменную нужно объявить
     
     // Параметры сетки
-    let scale = 20; // пикселей на одну логическую единицу
+    let scale = 20; 
     let centerX = canvas.width / 2;
     let centerY = canvas.height / 2;
 
-    // Переключение полей ввода
+    // --- ИСПРАВЛЕННАЯ ЛОГИКА ПЕРЕКЛЮЧЕНИЯ ИНТЕРФЕЙСА ---
     algoSelect.addEventListener('change', () => {
         const val = algoSelect.value;
+        
+        // Сначала скрываем всё
+        lineInputs.classList.add('hidden');
+        circleInputs.classList.add('hidden');
+        bezierInputs.classList.add('hidden');
+
         if (val === 'bresenham_circle') {
-            document.getElementById('lineInputs').classList.add('hidden');
-            document.getElementById('circleInputs').classList.remove('hidden');
-        } else {
-            document.getElementById('lineInputs').classList.remove('hidden');
-            document.getElementById('circleInputs').classList.add('hidden');
+            circleInputs.classList.remove('hidden');
+        } 
+        else if (val === 'casteljau') {
+            // Для кривой показываем и стандартные поля (как P1, P2), и новые (P3, P4)
+            lineInputs.classList.remove('hidden');
+            bezierInputs.classList.remove('hidden');
+            
+            // Меняем заголовки для ясности
+            document.querySelector('#lineInputs h3').textContent = "Точки P1 (Старт) и P2 (Контроль 1)";
+        } 
+        else {
+            // Для обычных линий
+            lineInputs.classList.remove('hidden');
+            document.querySelector('#lineInputs h3').textContent = "Координаты отрезка";
         }
     });
 
     document.getElementById('scaleRange').addEventListener('input', (e) => {
         scale = parseInt(e.target.value);
-        drawGrid(); // Перерисовать только сетку, без данных
-        // Можно вызывать draw(), если хотим сохранять рисунок при зуме
+        drawGrid(); 
     });
 
     function drawGrid() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Линии сетки
         ctx.beginPath();
         ctx.strokeStyle = '#e0e0e0';
         ctx.lineWidth = 1;
 
-        // Вертикальные
         for (let x = centerX; x < canvas.width; x += scale) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
         for (let x = centerX; x > 0; x -= scale) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
         
-        // Горизонтальные
         for (let y = centerY; y < canvas.height; y += scale) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
         for (let y = centerY; y > 0; y -= scale) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
         ctx.stroke();
 
-        // Оси
         ctx.beginPath();
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
-        ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); // X
-        ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvas.height); // Y
+        ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); 
+        ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvas.height); 
         ctx.stroke();
 
-        // Подписи осей
         ctx.fillStyle = 'black';
         ctx.font = '12px Arial';
         ctx.fillText("X", canvas.width - 15, centerY - 5);
@@ -139,29 +166,40 @@
     }
 
     function drawPixel(logicalX, logicalY, color = '#007bff') {
-        // Преобразование: Логические координаты -> Экранные
-        // X растет вправо, Y растет ВВЕРХ (в математике), но на канвасе Y растет ВНИЗ.
-        // Поэтому screenY = centerY - logicalY * scale
-        
         const screenX = centerX + logicalX * scale;
         const screenY = centerY - logicalY * scale;
 
         ctx.fillStyle = color;
-        // Рисуем квадрат чуть меньше клетки сетки, чтобы сетку было видно
         ctx.fillRect(screenX + 1, screenY - scale + 1, scale - 2, scale - 2);
     }
 
+    // --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА ---
     async function draw() {
         drawGrid();
         
         const algo = algoSelect.value;
         const req = { algorithm: algo };
 
+        // Сбор данных в зависимости от алгоритма
         if (algo === 'bresenham_circle') {
             req.x1 = parseInt(document.getElementById('cx').value);
             req.y1 = parseInt(document.getElementById('cy').value);
             req.r = parseInt(document.getElementById('r').value);
-        } else {
+        } 
+        else if (algo === 'casteljau') {
+            // Собираем все 4 точки!
+            req.x1 = parseInt(document.getElementById('x1').value);
+            req.y1 = parseInt(document.getElementById('y1').value);
+            req.x2 = parseInt(document.getElementById('x2').value);
+            req.y2 = parseInt(document.getElementById('y2').value);
+            // Добавляем новые поля
+            req.x3 = parseInt(document.getElementById('x3').value);
+            req.y3 = parseInt(document.getElementById('y3').value);
+            req.x4 = parseInt(document.getElementById('x4').value);
+            req.y4 = parseInt(document.getElementById('y4').value);
+        } 
+        else {
+            // Обычные линии
             req.x1 = parseInt(document.getElementById('x1').value);
             req.y1 = parseInt(document.getElementById('y1').value);
             req.x2 = parseInt(document.getElementById('x2').value);
@@ -177,7 +215,18 @@
             const data = await res.json();
 
             if (data.points) {
-                data.points.forEach(p => drawPixel(p.x, p.y));
+                // Если рисуем кривую, сделаем цвет красным для красоты
+                const color = (algo === 'casteljau') ? '#dc3545' : '#007bff';
+                
+                data.points.forEach(p => drawPixel(p.x, p.y, color));
+
+                // (Опционально) Для кривой можно нарисовать опорные точки другим цветом
+                if (algo === 'casteljau') {
+                     drawPixel(req.x1, req.y1, 'orange'); // Старт
+                     drawPixel(req.x2, req.y2, '#ccc');   // Контроль 1
+                     drawPixel(req.x3, req.y3, '#ccc');   // Контроль 2
+                     drawPixel(req.x4, req.y4, 'orange'); // Финиш
+                }
             }
             
             document.getElementById('statsOutput').textContent = 
@@ -195,7 +244,7 @@
 
     // Инициализация
     drawGrid();
-
+    
 </script>
 </body>
 </html>

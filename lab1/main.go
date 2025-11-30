@@ -43,7 +43,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.HandleFunc("/api/convert", convertHandler)
 
-	port := 8080
+	port := 8079
 	log.Printf("Server running at http://localhost:%d/ (serving ./static)\n", port)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), nil))
 }
@@ -60,7 +60,9 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Определяем базовый цвет (RGB) на основе входной модели
 	var rgb RGBModel
+	
 	switch req.Model {
 	case "rgb":
 		rf, okR := req.Values["r"]
@@ -70,9 +72,12 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "rgb requires r,g,b", http.StatusBadRequest)
 			return
 		}
-		rgb = RGBModel{R: clampInt(int(math.Round(rf)), 0, 255), G: clampInt(int(math.Round(gf)), 0, 255), B: clampInt(int(math.Round(bf)), 0, 255)}
+		rgb = RGBModel{
+			R: clampInt(int(math.Round(rf)), 0, 255),
+			G: clampInt(int(math.Round(gf)), 0, 255),
+			B: clampInt(int(math.Round(bf)), 0, 255),
+		}
 	case "cmyk":
-		// ожидаем проценты 0..100
 		cf, okC := req.Values["c"]
 		mf, okM := req.Values["m"]
 		yf, okY := req.Values["y"]
@@ -82,9 +87,12 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		r64, g64, b64 := CMYKToRGB(cf, mf, yf, kf)
-		rgb = RGBModel{R: clampInt(int(math.Round(r64)), 0, 255), G: clampInt(int(math.Round(g64)), 0, 255), B: clampInt(int(math.Round(b64)), 0, 255)}
+		rgb = RGBModel{
+			R: clampInt(int(math.Round(r64)), 0, 255),
+			G: clampInt(int(math.Round(g64)), 0, 255),
+			B: clampInt(int(math.Round(b64)), 0, 255),
+		}
 	case "hsv":
-		// H 0..360, S and V 0..100
 		hf, okH := req.Values["h"]
 		sf, okS := req.Values["s"]
 		vf, okV := req.Values["v"]
@@ -93,19 +101,52 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		r64, g64, b64 := HSVToRGB(hf, sf, vf)
-		rgb = RGBModel{R: clampInt(int(math.Round(r64)), 0, 255), G: clampInt(int(math.Round(g64)), 0, 255), B: clampInt(int(math.Round(b64)), 0, 255)}
+		rgb = RGBModel{
+			R: clampInt(int(math.Round(r64)), 0, 255),
+			G: clampInt(int(math.Round(g64)), 0, 255),
+			B: clampInt(int(math.Round(b64)), 0, 255),
+		}
 	default:
 		http.Error(w, "model must be one of: rgb, cmyk, hsv", http.StatusBadRequest)
 		return
 	}
 
+	// 2. Рассчитываем значения для всех моделей из полученного RGB
 	c, m, y, k := RGBToCMYK(rgb.R, rgb.G, rgb.B)
 	h, s, v := RGBToHSV(rgb.R, rgb.G, rgb.B)
 
+	// Формируем структуры ответа с расчетными данными
+	respCMYK := CMYKModel{
+		C: roundFloat(c*100, 2),
+		M: roundFloat(m*100, 2),
+		Y: roundFloat(y*100, 2),
+		K: roundFloat(k*100, 2),
+	}
+	respHSV := HSVModel{
+		H: roundFloat(h, 2),
+		S: roundFloat(s*100, 2),
+		V: roundFloat(v*100, 2),
+	}
+
+	// 3. ВАЖНО: Перезаписываем значения для текущей активной модели теми, что ввел пользователь.
+	// Это предотвращает сброс ползунков из-за математических округлений или особенностей моделей
+	// (например, при K=100 в CMYK значения C,M,Y математически не важны, но интерфейс их терять не должен).
+	if req.Model == "cmyk" {
+		respCMYK.C = req.Values["c"]
+		respCMYK.M = req.Values["m"]
+		respCMYK.Y = req.Values["y"]
+		respCMYK.K = req.Values["k"]
+	} else if req.Model == "hsv" {
+		respHSV.H = req.Values["h"]
+		respHSV.S = req.Values["s"]
+		respHSV.V = req.Values["v"]
+	}
+	// Для RGB обычно полезнее оставить clamp-значения (0-255), поэтому их не перезаписываем.
+
 	resp := ConvertResponse{
 		RGB:  rgb,
-		CMYK: CMYKModel{C: roundFloat(c*100, 2), M: roundFloat(m*100, 2), Y: roundFloat(y*100, 2), K: roundFloat(k*100, 2)},
-		HSV:  HSVModel{H: roundFloat(h, 2), S: roundFloat(s*100, 2), V: roundFloat(v*100, 2)},
+		CMYK: respCMYK,
+		HSV:  respHSV,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

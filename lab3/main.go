@@ -17,12 +17,16 @@ type Point struct {
 
 // DrawRequest - запрос от фронтенда
 type DrawRequest struct {
-	Algorithm string `json:"algorithm"` // "step", "dda", "bresenham_line", "bresenham_circle"
-	X1        int    `json:"x1"`
+	Algorithm string `json:"algorithm"`
+	X1        int    `json:"x1"` // Начало
 	Y1        int    `json:"y1"`
-	X2        int    `json:"x2"` // Для линий
-	Y2        int    `json:"y2"` // Для линий
-	R         int    `json:"r"`  // Для окружности
+	X2        int    `json:"x2"` // Контрольная точка 1
+	Y2        int    `json:"y2"`
+	X3        int    `json:"x3"` // Контрольная точка 2 (для кривых)
+	Y3        int    `json:"y3"`
+	X4        int    `json:"x4"` // Конец (для кривых)
+	Y4        int    `json:"y4"`
+	R         int    `json:"r"`  // Радиус
 }
 
 // DrawResponse - ответ с точками и временем
@@ -35,7 +39,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.HandleFunc("/api/draw", drawHandler)
 
-	port := 8080
+	port := 8083
 	log.Printf("Server running at http://localhost:%d\n", port)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), nil))
 }
@@ -64,6 +68,9 @@ func drawHandler(w http.ResponseWriter, r *http.Request) {
 		points = bresenhamLine(req.X1, req.Y1, req.X2, req.Y2)
 	case "bresenham_circle":
 		points = bresenhamCircle(req.X1, req.Y1, req.R)
+	case "casteljau": // НОВЫЙ КЕЙС
+		// Передаем 4 точки: Начало(X1,Y1), Контроль1(X2,Y2), Контроль2(X3,Y3), Конец(X4,Y4)
+		points = deCasteljau(req.X1, req.Y1, req.X2, req.Y2, req.X3, req.Y3, req.X4, req.Y4)
 	default:
 		http.Error(w, "Unknown algorithm", http.StatusBadRequest)
 		return
@@ -215,5 +222,39 @@ func bresenhamCircle(xc, yc, r int) []Point {
 		}
 		addPoints(xc, yc, x, y)
 	}
+	return points
+}
+
+
+// --- 5. Алгоритм де Кастельжо (Кривая Безье) ---
+// Строит кубическую кривую по 4 точкам.
+func deCasteljau(x1, y1, x2, y2, x3, y3, x4, y4 int) []Point {
+	var points []Point
+
+	step := 0.005 
+
+	for t := 0.0; t <= 1.0; t += step {
+
+		q0x := float64(x1) + (float64(x2)-float64(x1))*t
+		q0y := float64(y1) + (float64(y2)-float64(y1))*t
+
+		q1x := float64(x2) + (float64(x3)-float64(x2))*t
+		q1y := float64(y2) + (float64(y3)-float64(y2))*t
+
+		q2x := float64(x3) + (float64(x4)-float64(x3))*t
+		q2y := float64(y3) + (float64(y4)-float64(y3))*t
+
+		r0x := q0x + (q1x-q0x)*t
+		r0y := q0y + (q1y-q0y)*t
+
+		r1x := q1x + (q2x-q1x)*t
+		r1y := q1y + (q2y-q1y)*t
+
+		bx := r0x + (r1x-r0x)*t
+		by := r0y + (r1y-r0y)*t
+
+		points = append(points, Point{X: int(math.Round(bx)), Y: int(math.Round(by))})
+	}
+
 	return points
 }

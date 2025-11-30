@@ -23,7 +23,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.HandleFunc("/api/process", processHandler)
 
-	port := ":8080"
+	port := ":8081"
 	log.Printf("Server starting at http://localhost%s\n", port)
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatal(err)
