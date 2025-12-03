@@ -13,6 +13,7 @@ import (
 type Point struct {
 	X int `json:"x"`
 	Y int `json:"y"`
+	Alpha float64 `json:"alpha"`
 }
 
 // DrawRequest - запрос от фронтенда
@@ -68,9 +69,10 @@ func drawHandler(w http.ResponseWriter, r *http.Request) {
 		points = bresenhamLine(req.X1, req.Y1, req.X2, req.Y2)
 	case "bresenham_circle":
 		points = bresenhamCircle(req.X1, req.Y1, req.R)
-	case "casteljau": // НОВЫЙ КЕЙС
-		// Передаем 4 точки: Начало(X1,Y1), Контроль1(X2,Y2), Контроль2(X3,Y3), Конец(X4,Y4)
+	case "casteljau":
 		points = deCasteljau(req.X1, req.Y1, req.X2, req.Y2, req.X3, req.Y3, req.X4, req.Y4)
+	case "wu":
+		points = wuLine(req.X1, req.Y1, req.X2, req.Y2)
 	default:
 		http.Error(w, "Unknown algorithm", http.StatusBadRequest)
 		return
@@ -203,10 +205,10 @@ func bresenhamCircle(xc, yc, r int) []Point {
 	
 	addPoints := func(xc, yc, x, y int) {
 		points = append(points, 
-			Point{xc + x, yc + y}, Point{xc - x, yc + y},
-			Point{xc + x, yc - y}, Point{xc - x, yc - y},
-			Point{xc + y, yc + x}, Point{xc - y, yc + x},
-			Point{xc + y, yc - x}, Point{xc - y, yc - x},
+			Point{X: xc + x, Y: yc + y}, Point{X: xc - x, Y: yc + y},
+			Point{X: xc + x, Y: yc - y}, Point{X: xc - x, Y: yc - y},
+			Point{X: xc + y, Y: yc + x}, Point{X: xc - y, Y: yc + x},
+			Point{X: xc + y, Y: yc - x}, Point{X: xc - y, Y: yc - x},
 		)
 	}
 	
@@ -257,4 +259,93 @@ func deCasteljau(x1, y1, x2, y2, x3, y3, x4, y4 int) []Point {
 	}
 
 	return points
+}
+
+// --- 6. Алгоритм Ву (Сглаживание) ---
+func wuLine(x1, y1, x2, y2 int) []Point {
+	var points []Point
+
+	// Функция для добавления точки с яркостью
+	plot := func(x, y int, c float64) {
+		points = append(points, Point{X: x, Y: y, Alpha: c})
+	}
+
+	// Вспомогательные функции
+	abs := func(x float64) float64 { return math.Abs(x) }
+	ipart := func(x float64) int { return int(math.Floor(x)) }       // Целая часть
+	fpart := func(x float64) float64 { return x - math.Floor(x) }    // Дробная часть
+	rfpart := func(x float64) float64 { return 1.0 - fpart(x) }      // 1 - дробная
+
+	// Проверяем крутизну
+	steep := abs(float64(y2-y1)) > abs(float64(x2-x1))
+	
+	if steep {
+		x1, y1 = y1, x1
+		x2, y2 = y2, x2
+	}
+	if x2 < x1 {
+		x1, x2 = x2, x1
+		y1, y2 = y2, y1
+	}
+
+	dx := float64(x2 - x1)
+	dy := float64(y2 - y1)
+	gradient := dy / dx
+	if dx == 0.0 {
+		gradient = 1.0
+	}
+
+	// Обработка начальной точки
+	xEnd := round(float64(x1))
+	yEnd := float64(y1) + gradient*(float64(xEnd)-float64(x1))
+	xGap := rfpart(float64(x1) + 0.5)
+	
+	xPixel1 := xEnd 
+	yPixel1 := ipart(yEnd)
+	
+	if steep {
+		plot(yPixel1, xPixel1, rfpart(yEnd)*xGap)
+		plot(yPixel1+1, xPixel1, fpart(yEnd)*xGap)
+	} else {
+		plot(xPixel1, yPixel1, rfpart(yEnd)*xGap)
+		plot(xPixel1, yPixel1+1, fpart(yEnd)*xGap)
+	}
+	intery := yEnd + gradient 
+
+	// Обработка конечной точки
+	xEnd2 := round(float64(x2))
+	yEnd2 := float64(y2) + gradient*(float64(xEnd2)-float64(x2))
+	xGap2 := fpart(float64(x2) + 0.5)
+	
+	xPixel2 := xEnd2 
+	yPixel2 := ipart(yEnd2)
+
+	if steep {
+		plot(yPixel2, xPixel2, rfpart(yEnd2)*xGap2)
+		plot(yPixel2+1, xPixel2, fpart(yEnd2)*xGap2)
+	} else {
+		plot(xPixel2, yPixel2, rfpart(yEnd2)*xGap2)
+		plot(xPixel2, yPixel2+1, fpart(yEnd2)*xGap2)
+	}
+
+	// Основной цикл
+	if steep {
+		for x := xPixel1 + 1; x < xPixel2; x++ {
+			plot(ipart(intery), x, rfpart(intery))
+			plot(ipart(intery)+1, x, fpart(intery))
+			intery += gradient
+		}
+	} else {
+		for x := xPixel1 + 1; x < xPixel2; x++ {
+			plot(x, ipart(intery), rfpart(intery))
+			plot(x, ipart(intery)+1, fpart(intery))
+			intery += gradient
+		}
+	}
+
+	return points
+}
+
+func round(x float64) int {
+	return int(math.Floor(x + 0.5))
 }

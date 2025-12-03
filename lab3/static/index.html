@@ -32,7 +32,8 @@
             <option value="dda">Алгоритм ЦДА (DDA)</option>
             <option value="bresenham_line">Брезенхем (Линия)</option>
             <option value="bresenham_circle">Брезенхем (Окружность)</option>
-            <option value="casteljau">Де Кастельжо (Кривая Безье)</option> <!-- Добавили -->
+            <option value="casteljau">Де Кастельжо (Кривая Безье)</option>
+            <option value="wu">Алгоритм Ву (Сглаживание)</option> <!-- Добавлено -->
             </select>
         </div>
 
@@ -99,14 +100,14 @@
     const algoSelect = document.getElementById('algoSelect');
     const lineInputs = document.getElementById('lineInputs');
     const circleInputs = document.getElementById('circleInputs');
-    const bezierInputs = document.getElementById('bezierInputs'); // Эту переменную нужно объявить
+    const bezierInputs = document.getElementById('bezierInputs');
     
     // Параметры сетки
     let scale = 20; 
     let centerX = canvas.width / 2;
     let centerY = canvas.height / 2;
 
-    // --- ИСПРАВЛЕННАЯ ЛОГИКА ПЕРЕКЛЮЧЕНИЯ ИНТЕРФЕЙСА ---
+    // --- ЛОГИКА ПЕРЕКЛЮЧЕНИЯ ИНТЕРФЕЙСА ---
     algoSelect.addEventListener('change', () => {
         const val = algoSelect.value;
         
@@ -119,15 +120,12 @@
             circleInputs.classList.remove('hidden');
         } 
         else if (val === 'casteljau') {
-            // Для кривой показываем и стандартные поля (как P1, P2), и новые (P3, P4)
             lineInputs.classList.remove('hidden');
             bezierInputs.classList.remove('hidden');
-            
-            // Меняем заголовки для ясности
             document.querySelector('#lineInputs h3').textContent = "Точки P1 (Старт) и P2 (Контроль 1)";
         } 
         else {
-            // Для обычных линий
+            // Для обычных линий и Ву
             lineInputs.classList.remove('hidden');
             document.querySelector('#lineInputs h3').textContent = "Координаты отрезка";
         }
@@ -165,41 +163,55 @@
         ctx.fillText("Y", centerX + 5, 15);
     }
 
-    function drawPixel(logicalX, logicalY, color = '#007bff') {
+    // --- ОБНОВЛЕННАЯ ФУНКЦИЯ РИСОВАНИЯ ПИКСЕЛЯ ---
+    // Добавлен параметр alpha
+    function drawPixel(logicalX, logicalY, color = '#007bff', alpha = 1.0) {
         const screenX = centerX + logicalX * scale;
         const screenY = centerY - logicalY * scale;
 
         ctx.fillStyle = color;
+        
+        // Сохраняем старую прозрачность
+        const oldAlpha = ctx.globalAlpha;
+        
+        // Если пришла конкретная alpha (для Ву), используем её.
+        // Для старых алгоритмов с сервера придет 0 (default float), поэтому ставим 1.0
+        if (alpha > 0) {
+            ctx.globalAlpha = alpha;
+        } else {
+            ctx.globalAlpha = 1.0;
+        }
+
         ctx.fillRect(screenX + 1, screenY - scale + 1, scale - 2, scale - 2);
+
+        // Восстанавливаем прозрачность, чтобы сетка не испортилась
+        ctx.globalAlpha = oldAlpha;
     }
 
-    // --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА ---
+    // --- ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА ---
     async function draw() {
         drawGrid();
         
         const algo = algoSelect.value;
         const req = { algorithm: algo };
 
-        // Сбор данных в зависимости от алгоритма
         if (algo === 'bresenham_circle') {
             req.x1 = parseInt(document.getElementById('cx').value);
             req.y1 = parseInt(document.getElementById('cy').value);
             req.r = parseInt(document.getElementById('r').value);
         } 
         else if (algo === 'casteljau') {
-            // Собираем все 4 точки!
             req.x1 = parseInt(document.getElementById('x1').value);
             req.y1 = parseInt(document.getElementById('y1').value);
             req.x2 = parseInt(document.getElementById('x2').value);
             req.y2 = parseInt(document.getElementById('y2').value);
-            // Добавляем новые поля
             req.x3 = parseInt(document.getElementById('x3').value);
             req.y3 = parseInt(document.getElementById('y3').value);
             req.x4 = parseInt(document.getElementById('x4').value);
             req.y4 = parseInt(document.getElementById('y4').value);
         } 
         else {
-            // Обычные линии
+            // Обычные линии + Ву
             req.x1 = parseInt(document.getElementById('x1').value);
             req.y1 = parseInt(document.getElementById('y1').value);
             req.x2 = parseInt(document.getElementById('x2').value);
@@ -215,17 +227,20 @@
             const data = await res.json();
 
             if (data.points) {
-                // Если рисуем кривую, сделаем цвет красным для красоты
-                const color = (algo === 'casteljau') ? '#dc3545' : '#007bff';
+                // Выбираем цвет
+                let color = '#007bff'; // Синий по умолчанию
+                if (algo === 'casteljau') color = '#dc3545'; // Красный для Безье
+                if (algo === 'wu') color = '#000000'; // Черный для Ву (так лучше видно сглаживание)
                 
-                data.points.forEach(p => drawPixel(p.x, p.y, color));
+                // Рисуем каждый пиксель, передавая прозрачность (p.alpha)
+                data.points.forEach(p => drawPixel(p.x, p.y, color, p.alpha));
 
-                // (Опционально) Для кривой можно нарисовать опорные точки другим цветом
+                // Опорные точки для Безье
                 if (algo === 'casteljau') {
-                     drawPixel(req.x1, req.y1, 'orange'); // Старт
-                     drawPixel(req.x2, req.y2, '#ccc');   // Контроль 1
-                     drawPixel(req.x3, req.y3, '#ccc');   // Контроль 2
-                     drawPixel(req.x4, req.y4, 'orange'); // Финиш
+                     drawPixel(req.x1, req.y1, 'orange'); 
+                     drawPixel(req.x2, req.y2, '#ccc');   
+                     drawPixel(req.x3, req.y3, '#ccc');   
+                     drawPixel(req.x4, req.y4, 'orange'); 
                 }
             }
             
